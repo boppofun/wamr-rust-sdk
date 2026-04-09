@@ -177,7 +177,7 @@ fn build_wamr_libraries(wamr_root: &PathBuf) {
     println!("cargo:rustc-link-lib=static=iwasm");
 }
 
-fn build_wamrc(wamr_root: &Path) {
+/*fn build_wamrc(wamr_root: &Path) {
     let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
     let wamrc_build_path = out_dir.join("wamrcbuild");
 
@@ -187,9 +187,13 @@ fn build_wamrc(wamr_root: &Path) {
     Config::new(&wamr_compiler_path)
         .out_dir(wamrc_build_path)
         .define("WAMR_BUILD_WITH_CUSTOM_LLVM", "1")
-        .define("LLVM_DIR", env::var("LLVM_LIB_CFG_PATH").expect("LLVM_LIB_CFG_PATH isn't specified in config.toml"))
+        .define(
+            "LLVM_DIR",
+            env::var("LLVM_LIB_CFG_PATH")
+                .expect("LLVM_LIB_CFG_PATH isn't specified in config.toml"),
+        )
         .build();
-}
+}*/
 
 fn generate_bindings(wamr_root: &Path) {
     let wamr_header = wamr_root.join("core/iwasm/include/wasm_export.h");
@@ -224,7 +228,11 @@ fn main() {
         // because the ESP-IDF build procedure differs from the regular one
         // (build internally by esp-idf-sys),
         build_wamr_libraries(&wamr_root);
-        build_wamrc(&wamr_root);
+        // Avoid building wamrc, which depends on an old version of LLVM,
+        // and breaks Rust-analyzer features for this crate if an up-to-date
+        // LLVM version is installed on the system.
+        //
+        //build_wamrc(&wamr_root);
     }
 
     generate_bindings(&wamr_root);
