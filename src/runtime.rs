@@ -10,9 +10,10 @@
 use std::ffi::c_void;
 
 use wamr_sys::{
-    mem_alloc_type_t_Alloc_With_Pool, mem_alloc_type_t_Alloc_With_System_Allocator,
-    wasm_runtime_destroy, wasm_runtime_full_init, wasm_runtime_init, NativeSymbol,
-    RunningMode_Mode_Interp, RunningMode_Mode_LLVM_JIT, RuntimeInitArgs,
+    mem_alloc_type_t_Alloc_With_Allocator, mem_alloc_type_t_Alloc_With_Pool,
+    mem_alloc_type_t_Alloc_With_System_Allocator, wasm_runtime_destroy, wasm_runtime_full_init,
+    wasm_runtime_init, NativeSymbol, RunningMode_Mode_Interp, RunningMode_Mode_LLVM_JIT,
+    RuntimeInitArgs,
 };
 
 use crate::{host_function::HostFunctionList, RuntimeError};
@@ -21,6 +22,7 @@ use crate::{host_function::HostFunctionList, RuntimeError};
 #[derive(Debug)]
 pub struct Runtime {
     host_functions: HostFunctionList,
+    pool: Option<Vec<u8>>,
 }
 
 impl Runtime {
@@ -44,6 +46,7 @@ impl Runtime {
         match unsafe { wasm_runtime_init() } {
             true => Ok(Runtime {
                 host_functions: HostFunctionList::new("empty"),
+                pool: None,
             }),
             false => Err(RuntimeError::InitializationFailure),
         }
@@ -63,6 +66,7 @@ impl Drop for Runtime {
 pub struct RuntimeBuilder {
     args: RuntimeInitArgs,
     host_functions: HostFunctionList,
+    pool: Option<Vec<u8>>,
 }
 
 /// Can't build() until config allocator mode
@@ -72,6 +76,7 @@ impl Default for RuntimeBuilder {
         RuntimeBuilder {
             args,
             host_functions: HostFunctionList::new("host"),
+            pool: None,
         }
     }
 }
@@ -90,6 +95,22 @@ impl RuntimeBuilder {
         self.args.mem_alloc_type = mem_alloc_type_t_Alloc_With_Pool;
         self.args.mem_alloc_option.pool.heap_buf = pool.as_mut_ptr() as *mut c_void;
         self.args.mem_alloc_option.pool.heap_size = pool.len() as u32;
+        self.pool = Some(pool);
+        self
+    }
+
+    /// Allows using a custom allocator
+    /// All WAMR memory allocations are routed through the provided malloc/realloc/free function
+    pub fn use_custom_allocator(
+        mut self,
+        malloc_fn: *mut c_void,
+        realloc_fn: *mut c_void,
+        free_fn: *mut c_void,
+    ) -> RuntimeBuilder {
+        self.args.mem_alloc_type = mem_alloc_type_t_Alloc_With_Allocator;
+        self.args.mem_alloc_option.allocator.malloc_func = malloc_fn;
+        self.args.mem_alloc_option.allocator.realloc_func = realloc_fn;
+        self.args.mem_alloc_option.allocator.free_func = free_fn;
         self
     }
 
@@ -136,6 +157,7 @@ impl RuntimeBuilder {
         } {
             true => Ok(Runtime {
                 host_functions: self.host_functions,
+                pool: self.pool,
             }),
             false => Err(RuntimeError::InitializationFailure),
         }
