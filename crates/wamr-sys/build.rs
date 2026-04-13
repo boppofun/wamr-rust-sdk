@@ -177,6 +177,9 @@ fn build_wamr_libraries(wamr_root: &PathBuf) {
     println!("cargo:rustc-link-lib=static=iwasm");
 }
 
+// Commented out because this did not build correctly in the context of
+// rust-analyzer, which would break autocompletion and error checking
+// Can be compiled separately.
 /*fn build_wamrc(wamr_root: &Path) {
     let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
     let wamrc_build_path = out_dir.join("wamrcbuild");
@@ -199,13 +202,30 @@ fn generate_bindings(wamr_root: &Path) {
     let wamr_header = wamr_root.join("core/iwasm/include/wasm_export.h");
     assert!(wamr_header.exists());
 
-    let bindings = bindgen::Builder::default()
+    let mut builder = bindgen::Builder::default()
         .ctypes_prefix("::core::ffi")
         .use_core()
         .header(wamr_header.into_os_string().into_string().unwrap())
-        .derive_default(true)
-        .generate()
-        .expect("Unable to generate bindings");
+        .derive_default(true);
+
+    if check_is_espidf() {
+        // Use the correct gcc to avoid system Clang which does not know xtensa by default
+        let gcc = env::var("CC_xtensa_esp32s3_espidf")
+            .unwrap_or_else(|_| "xtensa-esp-elf-gcc".to_string());
+
+        // Find out the matching include folder and configure the builder accordingly
+        if let Ok(output) = std::process::Command::new(&gcc)
+            .arg("--print-sysroot")
+            .output()
+        {
+            let sysroot = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if !sysroot.is_empty() {
+                builder = builder.clang_arg(format!("-I{}/include", sysroot));
+            }
+        }
+    }
+
+    let bindings = builder.generate().expect("Unable to generate bindings");
     let out_path = PathBuf::from(env::var("OUT_DIR").unwrap());
     bindings
         .write_to_file(out_path.join("bindings.rs"))
