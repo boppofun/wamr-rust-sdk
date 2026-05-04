@@ -178,7 +178,18 @@ fn build_wamr_libraries(wamr_root: &PathBuf) {
     let mut cfg = setup_config(wamr_root, feature_flags);
     let dst = cfg.out_dir(vmbuild_path).build_target("vmlib").build();
 
-    println!("cargo:rustc-link-search=native={}/build", dst.display());
+    let mut iwasm_dir = dst.join("build");
+
+    if cfg!(windows) {
+        let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap()).join("build");
+        println!("cargo:rustc-link-search=native={}", manifest_dir.display());
+        println!("cargo:rustc-link-lib=static=uv");
+        println!("cargo:rustc-link-lib=static=uvwasi");
+
+        iwasm_dir.push("Debug");
+    }
+
+    println!("cargo:rustc-link-search=native={}", iwasm_dir.display());
     println!("cargo:rustc-link-lib=static=iwasm");
 }
 
