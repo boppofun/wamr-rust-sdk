@@ -74,30 +74,57 @@ impl<'instance> Function<'instance> {
         let mut index: usize = 0;
 
         for result_type in result_types.iter() {
-            match *result_type as u32 {
-                wasm_valkind_enum_WASM_I32
-                | wasm_valkind_enum_WASM_FUNCREF
-                | wasm_valkind_enum_WASM_EXTERNREF => {
-                    results.push(WasmValue::decode_to_i32(&result[index..index + 1]));
-                    index += 1;
+            cfg_select! {
+                unix => match *result_type as u32 {
+                    wasm_valkind_enum_WASM_I32
+                    | wasm_valkind_enum_WASM_FUNCREF
+                    | wasm_valkind_enum_WASM_EXTERNREF => {
+                        results.push(WasmValue::decode_to_i32(&result[index..index + 1]));
+                        index += 1;
+                    }
+                    wasm_valkind_enum_WASM_I64 => {
+                        results.push(WasmValue::decode_to_i64(&result[index..index + 2]));
+                        index += 2;
+                    }
+                    wasm_valkind_enum_WASM_F32 => {
+                        results.push(WasmValue::decode_to_f32(&result[index..index + 1]));
+                        index += 1;
+                    }
+                    wasm_valkind_enum_WASM_F64 => {
+                        results.push(WasmValue::decode_to_f64(&result[index..index + 2]));
+                        index += 2;
+                    }
+                    wasm_valkind_enum_WASM_V128 => {
+                        results.push(WasmValue::decode_to_v128(&result[index..index + 4]));
+                        index += 4;
+                    }
+                    _ => return Err(RuntimeError::NotImplemented),
                 }
-                wasm_valkind_enum_WASM_I64 => {
-                    results.push(WasmValue::decode_to_i64(&result[index..index + 2]));
-                    index += 2;
+                windows => match *result_type as i32 {
+                    wasm_valkind_enum_WASM_I32
+                    | wasm_valkind_enum_WASM_FUNCREF
+                    | wasm_valkind_enum_WASM_EXTERNREF => {
+                        results.push(WasmValue::decode_to_i32(&result[index..index + 1]));
+                        index += 1;
+                    }
+                    wasm_valkind_enum_WASM_I64 => {
+                        results.push(WasmValue::decode_to_i64(&result[index..index + 2]));
+                        index += 2;
+                    }
+                    wasm_valkind_enum_WASM_F32 => {
+                        results.push(WasmValue::decode_to_f32(&result[index..index + 1]));
+                        index += 1;
+                    }
+                    wasm_valkind_enum_WASM_F64 => {
+                        results.push(WasmValue::decode_to_f64(&result[index..index + 2]));
+                        index += 2;
+                    }
+                    wasm_valkind_enum_WASM_V128 => {
+                        results.push(WasmValue::decode_to_v128(&result[index..index + 4]));
+                        index += 4;
+                    }
+                    _ => return Err(RuntimeError::NotImplemented),
                 }
-                wasm_valkind_enum_WASM_F32 => {
-                    results.push(WasmValue::decode_to_f32(&result[index..index + 1]));
-                    index += 1;
-                }
-                wasm_valkind_enum_WASM_F64 => {
-                    results.push(WasmValue::decode_to_f64(&result[index..index + 2]));
-                    index += 2;
-                }
-                wasm_valkind_enum_WASM_V128 => {
-                    results.push(WasmValue::decode_to_v128(&result[index..index + 4]));
-                    index += 4;
-                }
-                _ => return Err(RuntimeError::NotImplemented),
             }
         }
 
