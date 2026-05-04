@@ -142,10 +142,11 @@ fn setup_config(
 
     if let Ok(platform_name) = env::var("WAMR_BUILD_PLATFORM") {
         cfg.define("WAMR_BUILD_PLATFORM", &platform_name);
-        if platform_name == "windows" {
-            cfg.define("WAMR_BUILD_LIBC_WASI", "0");
-            cfg.define("WAMR_BUILD_LIBC_UVWASI", "1");
-        }
+    }
+
+    if cfg!(windows) {
+        cfg.define("WAMR_BUILD_LIBC_WASI", "0");
+        cfg.define("WAMR_BUILD_LIBC_UVWASI", "1");
     }
 
     if let Ok(target_name) = env::var("WAMR_BUILD_TARGET") {
