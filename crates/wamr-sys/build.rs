@@ -186,7 +186,11 @@ fn build_wamr_libraries(wamr_root: &PathBuf) {
         println!("cargo:rustc-link-lib=static=uv");
         println!("cargo:rustc-link-lib=static=uvwasi");
 
-        iwasm_dir.push("Debug");
+        if cfg!(debug_assertions) {
+            iwasm_dir.push("Debug");
+        } else {
+            iwasm_dir.push("Release");
+        }
     }
 
     println!("cargo:rustc-link-search=native={}", iwasm_dir.display());
