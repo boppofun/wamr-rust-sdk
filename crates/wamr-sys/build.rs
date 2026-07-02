@@ -146,7 +146,8 @@ fn setup_config(
 
     if cfg!(windows) {
         cfg.define("WAMR_BUILD_LIBC_WASI", "0");
-        cfg.define("WAMR_BUILD_LIBC_UVWASI", "1");
+        cfg.define("WAMR_BUILD_LIBC_UVWASI", "1")
+            .define("LIBUV_BUILD_SHARED", "OFF");
     }
 
     if let Ok(target_name) = env::var("WAMR_BUILD_TARGET") {
