@@ -171,6 +171,78 @@ fn setup_config(
     cfg
 }
 
+// Recursively looks for a static library file under `search_root` whose file
+// name (case-insensitively) matches one of `file_names`, in priority order.
+//
+// This is needed because libuv/uvwasi are pulled in by WAMR's own CMake
+// build (via FetchContent, see core/iwasm/libraries/libc-uvwasi/libc_uvwasi.cmake)
+// rather than being vendored here, so the exact output directory depends on
+// the CMake/generator version and can't be hardcoded reliably.
+fn find_static_lib(search_root: &Path, file_names: &[&str]) -> Option<PathBuf> {
+    let mut stack = vec![search_root.to_path_buf()];
+    let mut candidates = Vec::new();
+
+    while let Some(dir) = stack.pop() {
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                stack.push(path);
+            } else if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+                if file_names
+                    .iter()
+                    .any(|candidate| candidate.eq_ignore_ascii_case(name))
+                {
+                    candidates.push(path);
+                }
+            }
+        }
+    }
+
+    // If both Debug and Release outputs are present (e.g. stale build dir),
+    // prefer the one matching the profile we're actually building.
+    let config_dir = if cfg!(debug_assertions) {
+        "Debug"
+    } else {
+        "Release"
+    };
+    candidates
+        .iter()
+        .find(|path| path.components().any(|c| c.as_os_str() == config_dir))
+        .or_else(|| candidates.first())
+        .cloned()
+}
+
+// Links against a static library found by `find_static_lib`, panicking with
+// a descriptive error if the CMake build didn't produce it. Linking a
+// missing/renamed library silently would otherwise surface as a much more
+// confusing linker error far away from the actual cause.
+fn link_static_lib_from_build(build_root: &Path, file_names: &[&str]) {
+    let lib_path = find_static_lib(build_root, file_names).unwrap_or_else(|| {
+        panic!(
+            "Could not find a static library named one of {:?} anywhere under {}. \
+             This is expected to be produced by WAMR's own CMake build (see \
+             core/iwasm/libraries/libc-uvwasi/libc_uvwasi.cmake) -- check whether \
+             the FetchContent target name or output directory layout changed.",
+            file_names,
+            build_root.display()
+        )
+    });
+
+    let lib_name = lib_path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .expect("static library path has no file name");
+
+    println!(
+        "cargo:rustc-link-search=native={}",
+        lib_path.parent().unwrap().display()
+    );
+    println!("cargo:rustc-link-lib=static={lib_name}");
+}
+
 fn build_wamr_libraries(wamr_root: &PathBuf) {
     let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
     let vmbuild_path = out_dir.join("vmbuild");
@@ -182,10 +254,14 @@ fn build_wamr_libraries(wamr_root: &PathBuf) {
     let mut iwasm_dir = dst.join("build");
 
     if cfg!(windows) {
-        let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap()).join("build");
-        println!("cargo:rustc-link-search=native={}", manifest_dir.display());
-        println!("cargo:rustc-link-lib=static=uv");
-        println!("cargo:rustc-link-lib=static=uvwasi");
+        // libuv/uvwasi are built as static libraries as part of the same
+        // CMake build (WAMR always links libuv's static `uv_a` target, never
+        // the shared `uv` target -- see libc_uvwasi.cmake). Find whatever
+        // CMake actually produced instead of assuming a fixed path, and
+        // verify it's a real static archive, not a DLL import library.
+        let build_root = dst.join("build");
+        link_static_lib_from_build(&build_root, &["uv_a.lib", "uv.lib", "libuv.lib"]);
+        link_static_lib_from_build(&build_root, &["uvwasi_a.lib", "uvwasi.lib"]);
 
         if cfg!(debug_assertions) {
             iwasm_dir.push("Debug");
@@ -241,7 +317,7 @@ fn generate_bindings(wamr_root: &Path) {
         {
             let sysroot = String::from_utf8_lossy(&output.stdout).trim().to_string();
             if !sysroot.is_empty() {
-                builder = builder.clang_arg(format!("-I{}/include", sysroot));
+                builder = builder.clang_arg(format!("-I{sysroot}/include"));
             }
         }
     }
