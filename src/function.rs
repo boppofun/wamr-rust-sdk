@@ -74,6 +74,7 @@ impl<'instance> Function<'instance> {
         let mut index: usize = 0;
 
         for result_type in result_types.iter() {
+            // Boppo: patch to handle i32 type on Windows.
             cfg_select! {
                 unix => match *result_type as u32 {
                     wasm_valkind_enum_WASM_I32
@@ -193,7 +194,10 @@ mod tests {
     use super::*;
     use crate::{module::Module, runtime::Runtime, wasi_context::WasiCtxBuilder};
     use std::{
-        process::{Command, Stdio}, path::Path, path::PathBuf, env, fs,
+        env, fs,
+        path::Path,
+        path::PathBuf,
+        process::{Command, Stdio},
     };
 
     #[test]
@@ -365,7 +369,8 @@ mod tests {
         };
         let base_entries = fs::read_dir(base);
         assert!(base_entries.is_ok());
-        let found = base_entries.unwrap()
+        let found = base_entries
+            .unwrap()
             .filter_map(|entry| entry.ok())
             .map(|entry| {
                 let path = entry.path();
@@ -377,8 +382,20 @@ mod tests {
                 (path, name)
             })
             .filter_map(|(path, name)| {
-                if name.starts_with("wamr-sys") && path.join("out").join("wamrcbuild").join("bin").join("wamrc").exists() {
-                    Some(path.join("out").join("wamrcbuild").join("bin").join("wamrc"))
+                if name.starts_with("wamr-sys")
+                    && path
+                        .join("out")
+                        .join("wamrcbuild")
+                        .join("bin")
+                        .join("wamrc")
+                        .exists()
+                {
+                    Some(
+                        path.join("out")
+                            .join("wamrcbuild")
+                            .join("bin")
+                            .join("wamrc"),
+                    )
                 } else {
                     None
                 }
@@ -392,7 +409,7 @@ mod tests {
             .arg("-o")
             .arg(aot_dest.clone())
             .arg(wasm_src.clone())
-            .stderr(Stdio::piped())  
+            .stderr(Stdio::piped())
             .stdout(Stdio::piped())
             .output()
             .unwrap();
@@ -412,7 +429,7 @@ mod tests {
 
         let wrapped_result = function.call(instance, &vec![]);
         let unwrapped_result = wrapped_result.unwrap();
-        
+
         assert_eq!(unwrapped_result.len(), 12);
         assert_eq!(
             unwrapped_result,
